@@ -64,7 +64,7 @@ class FullLunarEngine {
   /// [longitude]：出生地经度（如西安 108.9）
   DateTime getTrueSolarTime(DateTime dt, double longitude) {
     double jd = (dt.millisecondsSinceEpoch / 86400000) + 2440587.5;
-    double t = (jd - 2451545.0) / 36525.0;
+    // double t = (jd - 2451545.0) / 36525.0;
     // 简化均时差方程 (EOT)
     double eot = -7.659 * math.sin(math.pi * (0.0172 * (jd - 2451545.0 + 5.9)) / 180.0) - 9.863 * math.sin(math.pi * (0.0334 * (jd - 2451545.0 - 1.2)) / 180.0);
     double offsetMinutes = eot + (longitude - 120.0) * 4;

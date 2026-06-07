@@ -22,7 +22,7 @@
 ## 5. 项目约束 (Project Constraints)
 - **技术栈**：本项目使用flutter（dart）框架开发
 - **库依赖**：可以引入第三方包，但需要提前告知，一般情况下使用标准库。
-- **开发环境**：如果本地没有的开发环境只能在docker里面安装和调用，严禁在本地安装任何开发环境。
+- **开发环境**：如果本地没有的开发环境只能在docker里面安装和调用，严禁在本地安装任何开发环境，当前docker已安装python环境，你随时可以使用，docker命令为docker run -itd --name py_station -v "/Users/happy/Coding/workplace_py:/workspace" -w /workspace -p 8000:8000 python:3.14.3。
 
 ## 6. 信息
 - **外部信息**：在plan或者act过程中可以使用网路查询相关的信息，验证准确性。
