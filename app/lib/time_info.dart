@@ -71,7 +71,16 @@ class FullLunarEngine {
     return dt.add(Duration(seconds: (offsetMinutes * 60).round()));
   }
 
-  /// 2. 太阳黄经判定月柱 (解决节气交接错误)
+  /// 2. 获取精准干支年 使用黄经判定立春是否交接
+  String getGanzhiYear(DateTime date) {
+    int year = date.year;
+    if (date.month < 2 || (date.month == 2 && date.day < 4)) year -= 1;
+    int idx = (year - 3) % 60 - 1;
+    if (idx < 0) idx += 60;
+    return "${_gan[idx % 10]}${_zhi[idx % 12]}";
+  }
+
+  /// 3. 太阳黄经判定月柱 (解决节气交接错误)
   String getGanzhiMonth(DateTime dt) {
     int year = dt.year;
     int month = dt.month;
@@ -103,15 +112,6 @@ class FullLunarEngine {
     return "${localGan[monthGanIdx]}${localZhi[solarTermIdx + 2]}";
   }
 
-  /// 3. 获取精准干支年 使用黄经判定立春是否交接
-  String getGanzhiYear(DateTime date) {
-    int year = date.year;
-    if (date.month < 2 || (date.month == 2 && date.day < 4)) year -= 1;
-    int idx = (year - 3) % 60 - 1;
-    if (idx < 0) idx += 60;
-    return "${_gan[idx % 10]}${_zhi[idx % 12]}";
-  }
-
   /// 4. 日干支 (物理常量)
   String getGanzhiDay(DateTime date) {
     int jdn = (date.millisecondsSinceEpoch / 86400000).floor() + 2440588;
@@ -129,12 +129,12 @@ class FullLunarEngine {
     return "${_gan[timeGanIdx]}${_zhi[hourIndex]}";
   }
 
-  /// 7. 公历闰年判断 (数学规则)
+  /// 6. 公历闰年判断 (数学规则)
   bool isSolarLeapYear(int year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
   }
 
-  /// 8. 农历闰月提取 (位运算解压)
+  /// 7. 农历闰月提取 (位运算解压)
   /// 返回值：0表示无闰月，1-12表示闰几月
   int getLunarLeapMonth(int year) {
     if (year < 1900 || year > 2100) return 0;
