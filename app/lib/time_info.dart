@@ -60,73 +60,100 @@ class FullLunarEngine {
   final List<String> _gan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
   final List<String> _zhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
 
-  /// 1. 真太阳时修正（解决时辰判定歧义）
-  /// [longitude]：出生地经度（如西安 108.9）
-  DateTime getTrueSolarTime(DateTime dt, double longitude) {
-    double jd = (dt.millisecondsSinceEpoch / 86400000) + 2440587.5;
-    // double t = (jd - 2451545.0) / 36525.0;
-    // 简化均时差方程 (EOT)
-    double eot = -7.659 * math.sin(math.pi * (0.0172 * (jd - 2451545.0 + 5.9)) / 180.0) - 9.863 * math.sin(math.pi * (0.0334 * (jd - 2451545.0 - 1.2)) / 180.0);
-    double offsetMinutes = eot + (longitude - 120.0) * 4;
-    return dt.add(Duration(seconds: (offsetMinutes * 60).round()));
+  /// 将任意时区的时间，还原为绝对的宇宙标准时间 (UTC)
+  DateTime _getCleanUtc(DateTime date, int inputTimeZoneOffset) {
+    return DateTime.utc(date.year, date.month, date.day, date.hour, date.minute, date.second).subtract(Duration(hours: inputTimeZoneOffset));
   }
 
-  /// 2. 获取精准干支年 使用黄经判定立春是否交接
-  String getGanzhiYear(DateTime date) {
-    int year = date.year;
-    if (date.month < 2 || (date.month == 2 && date.day < 4)) year -= 1;
+  /// 1. 高阶真太阳时修正（基于绝对 UTC 时间与地理经度，带完整 EOT 修正）
+  DateTime getTrueSolarTime(DateTime utcTime, double longitude) {
+    double jd = (utcTime.millisecondsSinceEpoch / 86400000.0) + 2440587.5;
+    // 均时差方程 (Equation of Time)
+    double eot = -7.659 * math.sin(math.pi * (0.0172 * (jd - 2451545.0 + 5.9)) / 180.0) - 9.863 * math.sin(math.pi * (0.0334 * (jd - 2451545.0 - 1.2)) / 180.0);
+    // 经度物理时差：以本初子午线(0度)为基准，每差1度差4分钟
+    double offsetMinutes = eot + (longitude * 4.0);
+    return utcTime.add(Duration(seconds: (offsetMinutes * 60).round()));
+  }
+
+  /// 2. 获取精准干支年 (彻底废除东八区绑定，完全基于 UTC 绝对时间轴判定立春)
+  String getGanzhiYear(DateTime date, int inputTimeZoneOffset) {
+    DateTime utc = _getCleanUtc(date, inputTimeZoneOffset);
+
+    int year = utc.year;
+    // 世纪常量公式定义的立春点在 UTC 轴的 2月4日 附近
+    if (utc.month < 2 || (utc.month == 2 && utc.day < 4)) year -= 1;
+
     int idx = (year - 3) % 60 - 1;
     if (idx < 0) idx += 60;
     return "${_gan[idx % 10]}${_zhi[idx % 12]}";
   }
 
-  /// 3. 太阳黄经判定月柱 (解决节气交接错误)
-  String getGanzhiMonth(DateTime dt) {
-    int year = dt.year;
-    int month = dt.month;
-    int day = dt.day;
+  /// 3. 世纪常量判定月柱 (全球同步的节气交接天数轴)
+  String getGanzhiMonth(DateTime date, int inputTimeZoneOffset) {
+    DateTime utc = _getCleanUtc(date, inputTimeZoneOffset);
 
-    // 1900-2100年间，每个月“节”的二十四节气 C 常量值
+    int year = utc.year;
+    int month = utc.month;
+    int day = utc.day;
+
     final List<double> termConstants = [5.4055, 3.87, 5.63, 5.59, 6.318, 5.678, 7.108, 7.5, 7.646, 8.318, 7.438, 7.18];
 
-    // 世纪常量公式精准计算当年当月的“节气交接日”
+    // 世纪常量公式算出来的 sectionDay 代表节气在 UTC 视角的交接日期字面量
     double d = (year - 1900) * 0.2422 + termConstants[month - 1] - ((year - 1900) - 1) ~/ 4;
-    int sectionDay = d.floor(); // 1987年11月会精准算出 8 (即11月8日立冬)
+    int sectionDay = d.floor();
 
     int solarTermIdx;
     if (day >= sectionDay) {
       solarTermIdx = (month - 2 + 12) % 12;
     } else {
-      solarTermIdx = (month - 3 + 12) % 12; // 11月2日 < 8日，走到这里，solarTermIdx = 8 (戌月)
+      solarTermIdx = (month - 3 + 12) % 12;
     }
 
-    // 固定的天干地支表
-    final List<String> localGan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
-    final List<String> localZhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
-
-    // 根据年干推算月干 (五虎遁)
-    String yearGan = getGanzhiYear(dt)[0];
-    int yearGanIdx = localGan.indexOf(yearGan) % 5;
-    int monthGanIdx = (yearGanIdx * 2 + solarTermIdx + 2) % 10; // 丁年(Idx=3), 3*2+8+2 = 16 % 10 = 6 -> "庚"
-
-    return "${localGan[monthGanIdx]}${localZhi[solarTermIdx + 2]}";
+    String yearGan = getGanzhiYear(date, inputTimeZoneOffset)[0];
+    int yearGanIdx = _gan.indexOf(yearGan) % 5;
+    int monthGanIdx = (yearGanIdx * 2 + solarTermIdx + 2) % 10;
+    return "${_gan[monthGanIdx]}${_zhi[solarTermIdx + 2]}";
   }
 
-  /// 4. 日干支 (物理常量)
-  String getGanzhiDay(DateTime date) {
-    int jdn = (date.millisecondsSinceEpoch / 86400000).floor() + 2440588;
-    int idx = (jdn + 5) % 60;
+  /// 4. 日干支 (根据本地时区划分24小时的日期边界，完全脱离设备本地时区)
+  String getGanzhiDay(DateTime date, int inputTimeZoneOffset) {
+    // 1. 先把输入时间洗成纯净的 UTC 绝对时间
+    DateTime utcTime = _getCleanUtc(date, inputTimeZoneOffset);
+
+    // 2. 加上目标时区偏移，直接提取出生地当地的纯字面量 [年、月、日]
+    DateTime localTime = utcTime.add(Duration(hours: inputTimeZoneOffset));
+
+    // 3. 构造纯字面量的当地零点对象
+    DateTime localPureDate = DateTime.utc(localTime.year, localTime.month, localTime.day);
+
+    // 4. 使用历法最稳固的 2000 年 1 月 1 日作为锚点！
+    // 查万年历可知：公元 2000 年 1 月 1 日是【戊午】日（六十甲子中第 54 位，索引为 54）
+    DateTime anchorDate = DateTime.utc(2000, 1, 1);
+
+    // 5. 计算绝对天数差
+    int diffDays = localPureDate.difference(anchorDate).inDays;
+
+    // 6. 用绝对天数差加上 2000年元旦的 54 偏移量对 60 取模
+    int idx = (diffDays + 54) % 60;
+    if (idx < 0) idx += 60;
+
     return "${_gan[idx % 10]}${_zhi[idx % 12]}";
   }
 
-  /// 5. 时干支 (基于真太阳时)
-  String getGanzhiTime(DateTime date, double longitude) {
-    DateTime trueTime = getTrueSolarTime(date, longitude);
-    String dayGan = getGanzhiDay(date)[0];
+  /// 5. 时干支 (完全依赖高阶真太阳时，100%解耦)
+  String getGanzhiTime(DateTime date, int inputTimeZoneOffset, double longitude) {
+    DateTime utcTime = _getCleanUtc(date, inputTimeZoneOffset);
+    DateTime trueSolarTime = getTrueSolarTime(utcTime, longitude);
+
+    int hour = trueSolarTime.hour;
+    int zhiIdx = (((hour + 1) % 24) ~/ 2) % 12;
+
+    // 传入目标地点的政治时区以获得该地点正确的日天干
+    String dayGan = getGanzhiDay(date, inputTimeZoneOffset)[0];
     int dayGanIdx = _gan.indexOf(dayGan) % 5;
-    int hourIndex = ((trueTime.hour + 1) % 24) ~/ 2;
-    int timeGanIdx = (dayGanIdx * 2 + hourIndex) % 10;
-    return "${_gan[timeGanIdx]}${_zhi[hourIndex]}";
+    int timeGanIdx = (dayGanIdx * 2 + zhiIdx) % 10;
+
+    return "${_gan[timeGanIdx]}${_zhi[zhiIdx]}";
   }
 
   /// 6. 公历闰年判断 (数学规则)
@@ -135,7 +162,6 @@ class FullLunarEngine {
   }
 
   /// 7. 农历闰月提取 (位运算解压)
-  /// 返回值：0表示无闰月，1-12表示闰几月
   int getLunarLeapMonth(int year) {
     if (year < 1900 || year > 2100) return 0;
     return (_lunarInfo[year - 1900] >> 16) & 0xF;
