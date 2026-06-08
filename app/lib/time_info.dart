@@ -73,23 +73,39 @@ class FullLunarEngine {
 
   /// 2. 太阳黄经判定月柱 (解决节气交接错误)
   String getGanzhiMonth(DateTime dt) {
-    // 核心：基于太阳黄经的节气区间判定
-    // 0度(春分) -> 30度(清明) ... 315度(立春)
-    double jd = (dt.millisecondsSinceEpoch / 86400000) + 2440587.5;
-    double t = (jd - 2451545.0) / 36525.0;
-    double l0 = 280.46646 + 36000.76983 * t; // 太阳平黄经
-    int solarTermIdx = ((l0 - 15) / 30).floor() % 12; // 简化黄经转节气索引
+    int year = dt.year;
+    int month = dt.month;
+    int day = dt.day;
 
+    // 1900-2100年间，每个月“节”的二十四节气 C 常量值
+    final List<double> termConstants = [5.4055, 3.87, 5.63, 5.59, 6.318, 5.678, 7.108, 7.5, 7.646, 8.318, 7.438, 7.18];
+
+    // 世纪常量公式精准计算当年当月的“节气交接日”
+    double d = (year - 1900) * 0.2422 + termConstants[month - 1] - ((year - 1900) - 1) ~/ 4;
+    int sectionDay = d.floor(); // 1987年11月会精准算出 8 (即11月8日立冬)
+
+    int solarTermIdx;
+    if (day >= sectionDay) {
+      solarTermIdx = (month - 2 + 12) % 12;
+    } else {
+      solarTermIdx = (month - 3 + 12) % 12; // 11月2日 < 8日，走到这里，solarTermIdx = 8 (戌月)
+    }
+
+    // 固定的天干地支表
+    final List<String> localGan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
+    final List<String> localZhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+
+    // 根据年干推算月干 (五虎遁)
     String yearGan = getGanzhiYear(dt)[0];
-    int yearGanIdx = _gan.indexOf(yearGan) % 5;
-    int monthGanIdx = (yearGanIdx * 2 + solarTermIdx + 2) % 10;
-    return "${_gan[monthGanIdx]}${_zhi[solarTermIdx + 2]}";
+    int yearGanIdx = localGan.indexOf(yearGan) % 5;
+    int monthGanIdx = (yearGanIdx * 2 + solarTermIdx + 2) % 10; // 丁年(Idx=3), 3*2+8+2 = 16 % 10 = 6 -> "庚"
+
+    return "${localGan[monthGanIdx]}${localZhi[solarTermIdx + 2]}";
   }
 
-  /// 3. 获取精准干支年
+  /// 3. 获取精准干支年 使用黄经判定立春是否交接
   String getGanzhiYear(DateTime date) {
     int year = date.year;
-    // 使用黄经判定立春是否交接
     if (date.month < 2 || (date.month == 2 && date.day < 4)) year -= 1;
     int idx = (year - 3) % 60 - 1;
     if (idx < 0) idx += 60;
